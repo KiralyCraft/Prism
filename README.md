@@ -1,4 +1,4 @@
-# Prism [![Build Status](https://api.travis-ci.org/prism/Prism.png)](https://travis-ci.org/prism/Prism/)
+# Prism
 
 *By viveleroi*
 
