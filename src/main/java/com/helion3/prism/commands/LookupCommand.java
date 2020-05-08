@@ -26,10 +26,14 @@ package com.helion3.prism.commands;
 import java.util.concurrent.CompletableFuture;
 
 import org.spongepowered.api.text.Text;
+import org.spongepowered.api.text.format.TextColors;
+import org.spongepowered.api.world.World;
 import org.spongepowered.api.command.CommandResult;
 import org.spongepowered.api.command.args.GenericArguments;
 import org.spongepowered.api.command.spec.CommandSpec;
+import org.spongepowered.api.entity.living.player.Player;
 
+import com.helion3.prism.Prism;
 import com.helion3.prism.api.query.QuerySession;
 import com.helion3.prism.util.AsyncUtil;
 import com.helion3.prism.util.Format;
@@ -50,21 +54,38 @@ public class LookupCommand {
                 if (args.<String>getOne("parameters").isPresent()) {
                     parameters = args.<String>getOne("parameters").get();
                 }
-
-                source.sendMessage(Format.heading("Querying records..."));
-
-                try {
-                    CompletableFuture<Void> future = session.newQueryFromArguments(parameters);
-                    future.thenAccept((v) -> {
-                        // Pass off to an async lookup helper
-                        AsyncUtil.lookup(session);
-                    });
-                } catch(Exception e) {
-                    String message = e.getMessage() == null ? "Unknown error. Please check the console." : e.getMessage();
-                    source.sendMessage(Format.error(Text.of(message)));
-                    e.printStackTrace();
+                
+                if (source instanceof Player)
+                {
+                	Player playerSource = (Player)source;
+                	
+                	World theWorld = playerSource.getWorld();
+                	if (theWorld!=null) //This can be null
+                	{
+                		if (Prism.getInstance().getConfig().getGeneralCategory().getDimensions().contains(theWorld.getName()))
+                		{
+                			playerSource.sendMessage(Text.of(
+                	                Format.prefix(), TextColors.GREEN,"--- Block events were disabled for this world ("+theWorld.getName()+") ---"));
+                		}
+                	}
+	                source.sendMessage(Format.heading("Querying records..."));
+	
+	                try {
+	                    CompletableFuture<Void> future = session.newQueryFromArguments(parameters);
+	                    future.thenAccept((v) -> {
+	                        // Pass off to an async lookup helper
+	                        AsyncUtil.lookup(session);
+	                    });
+	                } catch(Exception e) {
+	                    String message = e.getMessage() == null ? "Unknown error. Please check the console." : e.getMessage();
+	                    source.sendMessage(Format.error(Text.of(message)));
+	                    e.printStackTrace();
+	                }
                 }
-
+                else
+                {
+                	 source.sendMessage(Format.heading("This command should be run by a Player."));
+                }
                 return CommandResult.success();
             }).build();
     }

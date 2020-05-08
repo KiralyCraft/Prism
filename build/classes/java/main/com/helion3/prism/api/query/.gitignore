@@ -1,0 +1,13 @@
+/Condition.class
+/ConditionGroup$Operator.class
+/ConditionGroup.class
+/FieldCondition.class
+/MatchRule.class
+/Query.class
+/QueryBuilder.class
+/QuerySession.class
+/QueryValueMutator.class
+/SQLQuery$Builder.class
+/SQLQuery$Mode.class
+/SQLQuery.class
+/Sort.class

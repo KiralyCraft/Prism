@@ -24,6 +24,19 @@
 
 package com.helion3.prism.commands;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+import org.spongepowered.api.command.CommandResult;
+import org.spongepowered.api.command.args.GenericArguments;
+import org.spongepowered.api.command.spec.CommandSpec;
+import org.spongepowered.api.entity.living.player.Player;
+import org.spongepowered.api.scheduler.Task;
+import org.spongepowered.api.text.Text;
+
 import com.helion3.prism.Prism;
 import com.helion3.prism.api.flags.Flag;
 import com.helion3.prism.api.query.QuerySession;
@@ -31,129 +44,131 @@ import com.helion3.prism.api.query.Sort;
 import com.helion3.prism.api.records.Actionable;
 import com.helion3.prism.api.records.ActionableResult;
 import com.helion3.prism.api.records.Result;
-import com.helion3.prism.util.*;
-import org.spongepowered.api.command.CommandResult;
-import org.spongepowered.api.command.args.GenericArguments;
-import org.spongepowered.api.command.spec.CommandSpec;
-import org.spongepowered.api.entity.living.player.Player;
-import org.spongepowered.api.text.Text;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import com.helion3.prism.util.Format;
+import com.helion3.prism.util.Template;
+import com.helion3.prism.util.Translation;
+import com.helion3.prism.util.WorldUtil;
 
 public class ApplierCommand {
 
-    private ApplierCommand() {
-    }
+	private ApplierCommand() {
+	}
 
-    public static CommandSpec getCommand(Sort sort) {
-        return CommandSpec.builder()
-        .permission("prism.rollback")
-        .arguments(GenericArguments.remainingJoinedStrings(Text.of("parameters")))
-        .executor((source, args) -> {
-            // Create a new query session
-            final QuerySession session = new QuerySession(source);
-            session.addFlag(Flag.NO_GROUP);
+	public static CommandSpec getCommand(Sort sort) {
+		return CommandSpec.builder().permission("prism.rollback")
+				.arguments(GenericArguments.remainingJoinedStrings(Text.of("parameters"))).executor((source, args) -> {
+					// Create a new query session
+					final QuerySession session = new QuerySession(source);
+					session.addFlag(Flag.NO_GROUP);
 
-            try {
-                source.sendMessage(Format.heading("Querying records..."));
+					try {
+						source.sendMessage(Format.heading("Querying records..."));
 
-                CompletableFuture<Void> future = session.newQueryFromArguments(args.<String>getOne("parameters").get());
-                // Ignore user order flag, if used, for proper rollback/restore order to be used.
-                session.setSortBy(sort);
-                future.thenAccept((v) -> {
-                    session.getQuery().setLimit(Prism.getInstance().getConfig().getLimitCategory().getMaximumActionable());
+						CompletableFuture<Void> future = session
+								.newQueryFromArguments(args.<String>getOne("parameters").get());
+						// Ignore user order flag, if used, for proper rollback/restore order to be
+						// used.
+						session.setSortBy(sort);
+						future.thenAccept((v) -> {
+							session.getQuery().setLimit(
+									Prism.getInstance().getConfig().getLimitCategory().getMaximumActionable());
 
-                    try {
-                        List<ActionableResult> actionResults = new ArrayList<>();
-                        // Iterate query results
-                        CompletableFuture<List<Result>> futureResults = Prism.getInstance().getStorageAdapter().records().query(session, false);
-                        futureResults.thenAccept(results -> {
-                            if (results.isEmpty()) {
-                                source.sendMessage(Format.error("No results."));
-                            } else {
-                                try {
-                                    // Iterate record results
-                                    for (Result result : results) {
-                                        if (result instanceof Actionable) {
-                                            Actionable actionable = (Actionable) result;
+							try {
+								List<ActionableResult> actionResults = new ArrayList<>();
+								// Iterate query results
+								CompletableFuture<List<Result>> futureResults = Prism.getInstance().getStorageAdapter()
+										.records().query(session, false);
+								futureResults.thenAccept(results -> {
+									Task.Builder taskBuilder = Task.builder();
 
-                                            if (sort.equals(Sort.NEWEST_FIRST)) {
-                                                actionResults.add(actionable.rollback());
-                                            } else {
-                                                actionResults.add(actionable.restore());
-                                            }
-                                        }
-                                    }
-                                } catch(Exception e) {
-                                    e.printStackTrace();
-                                }
+									taskBuilder.execute(new Runnable() {
 
-                                if (source instanceof Player) {
-                                    int changes = 0;
+										@Override
+										public void run() {
+											if (results.isEmpty()) {
+												source.sendMessage(Format.error("No results."));
+											} else {
+												try {
+													// Iterate record results
+													for (Result result : results) {
+														if (result instanceof Actionable) {
+															Actionable actionable = (Actionable) result;
 
-                                    if (session.hasFlag(Flag.CLEAN)) {
-                                        changes += WorldUtil.removeIllegalBlocks(
-                                            ((Player) source).getLocation(), session.getRadius());
-                                        changes += WorldUtil.removeItemEntitiesAroundLocation(((Player) source).getLocation(), session.getRadius());
-                                    }
+															if (sort.equals(Sort.NEWEST_FIRST)) {
+																actionResults.add(actionable.rollback());
+															} else {
+																actionResults.add(actionable.restore());
+															}
+														}
+													}
+												} catch (Exception e) {
+													e.printStackTrace();
+												}
 
-                                    if (session.hasFlag(Flag.DRAIN)) {
-                                        changes += WorldUtil.removeLiquidsAroundLocation(
-                                            ((Player) source).getLocation(), session.getRadius());
-                                    }
+												if (source instanceof Player) {
+													int changes = 0;
 
-                                    if (changes > 0) {
-                                        source.sendMessage(Format.bonus("Cleaning area..."));
-                                    }
-                                }
+													if (session.hasFlag(Flag.CLEAN)) {
+														changes += WorldUtil.removeIllegalBlocks(
+																((Player) source).getLocation(), session.getRadius());
+														changes += WorldUtil.removeItemEntitiesAroundLocation(
+																((Player) source).getLocation(), session.getRadius());
+													}
 
-                                int appliedCount = 0;
-                                int skippedCount = 0;
-                                for (ActionableResult result : actionResults) {
-                                    if (result.applied()) {
-                                        appliedCount++;
-                                    } else {
-                                        skippedCount++;
-                                    }
-                                }
+													if (session.hasFlag(Flag.DRAIN)) {
+														changes += WorldUtil.removeLiquidsAroundLocation(
+																((Player) source).getLocation(), session.getRadius());
+													}
 
-                                Map<String, String> tokens = new HashMap<>();
-                                tokens.put("appliedCount", ""+appliedCount);
-                                tokens.put("skippedCount", ""+skippedCount);
+													if (changes > 0) {
+														source.sendMessage(Format.bonus("Cleaning area..."));
+													}
+												}
 
-                                final String messageTemplate;
-                                if (skippedCount > 0) {
-                                    messageTemplate = Translation.from("rollback.success.withskipped");
-                                } else {
-                                    messageTemplate = Translation.from("rollback.success");
-                                }
+												int appliedCount = 0;
+												int skippedCount = 0;
+												for (ActionableResult result : actionResults) {
+													if (result.applied()) {
+														appliedCount++;
+													} else {
+														skippedCount++;
+													}
+												}
 
-                                source.sendMessage(Format.heading(
-                                    Text.of(Template.parseTemplate(messageTemplate, tokens)),
-                                    " ", Format.bonus(Translation.from("rollback.success.bonus"))
-                                ));
+												Map<String, String> tokens = new HashMap<>();
+												tokens.put("appliedCount", "" + appliedCount);
+												tokens.put("skippedCount", "" + skippedCount);
 
-                                if (source instanceof Player) {
-                                    Prism.getInstance().getLastActionResults().put(((Player) source).getUniqueId(), actionResults);
-                                }
-                            }
-                        });
-                    } catch (Exception e) {
-                        source.sendMessage(Format.error(Text.of(e.getMessage())));
-                        e.printStackTrace();
-                    }
-                });
-            } catch(Exception e) {
-                source.sendMessage(Format.error(Text.of(e.getMessage())));
-                e.printStackTrace();
-            }
+												final String messageTemplate;
+												if (skippedCount > 0) {
+													messageTemplate = Translation.from("rollback.success.withskipped");
+												} else {
+													messageTemplate = Translation.from("rollback.success");
+												}
 
-            return CommandResult.success();
-        })
-        .build();
-    }
+												source.sendMessage(Format.heading(
+														Text.of(Template.parseTemplate(messageTemplate, tokens)), " ",
+														Format.bonus(Translation.from("rollback.success.bonus"))));
+
+												if (source instanceof Player) {
+													Prism.getInstance().getLastActionResults()
+															.put(((Player) source).getUniqueId(), actionResults);
+												}
+											}
+										}
+									}).submit(Prism.getInstance().getPluginContainer());
+								});
+							} catch (Exception e) {
+								source.sendMessage(Format.error(Text.of(e.getMessage())));
+								e.printStackTrace();
+							}
+						});
+					} catch (Exception e) {
+						source.sendMessage(Format.error(Text.of(e.getMessage())));
+						e.printStackTrace();
+					}
+
+					return CommandResult.success();
+				}).build();
+	}
 }

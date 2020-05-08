@@ -92,18 +92,6 @@ public class BlockResult extends ResultComplete implements Actionable
 	        // Current block in this space.
 	        BlockSnapshot original = location.getBlock().snapshotFor(location);
 	
-//	       Task s = taskBuilder.submit(new Runnable()
-//	        		{
-//
-//						@Override
-//						public void run() {
-//							// TODO Auto-generated method stub
-//							
-//						}
-//	        	
-//	        		});
-//	       
-//	       s.
 	        // Actually restore!
 	        if (!optionalSnapshot.get().restore(true, BlockChangeFlags.NONE)) {
 	            return ActionableResult.skipped(SkipReason.UNKNOWN);
